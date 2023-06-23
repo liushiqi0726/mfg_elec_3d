@@ -236,9 +236,9 @@ class Conventional(Agent):
     def gain(self,p, cp, fp):
         return (convcoef*self.G(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp) - self.rCost)
     def offer(self,p,cp, fp, t):
-        return sum(self.F(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp)*np.sum(self.m_[t,Amin:Amax,:],axis=0))*self.dX*self.da
+        return sum(self.F(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp)*np.sum(self.m_[t,self.amin:self.amax,:],axis=0))*self.dX*self.da
     def ioffer(self,p,cp,fp,t):
-        return sum(self.G(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp)*np.sum(self.m_[t,Amin:Amax,:],axis=0))*self.dX*self.da
+        return sum(self.G(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp)*np.sum(self.m_[t,self.amin:self.amax,:],axis=0))*self.dX*self.da
     def full_offer(self,price, cPrice, fPrice):
         # agent supply for given price level
         res = np.zeros(self.Nt)
@@ -271,7 +271,7 @@ class Renewable(Agent):
     def gain(self,p,cp,fp):
         return convcoef*p*self.X - self.rCost
     def offer(self,t):
-        return sum(self.X*np.sum(self.m_[t,Amin:Amax,:],axis=0))*self.dX*self.da
+        return sum(self.X*np.sum(self.m_[t,self.amin:self.amax,:],axis=0))*self.dX*self.da
     def full_offer(self):
         # agent supply for given price level
         res = np.zeros(self.Nt)
