@@ -4,10 +4,6 @@
     "NX" : 41, # space grid size
     "Xmin" : 0, # minimum value of cost process
     "Xmax" : 120, # maximum value of cost process
-    "Na" : 5,
-    "amin": 0,
-    "amax": 25,
-    "abar": 25,
     "discount rate" : 0.08,
     "depreciation rate" : 0.0, # Half-life 15y for gas, 20y for coal, 12.5y for renewable
     "running cost" : 68., # per kW per year

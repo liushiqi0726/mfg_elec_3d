@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from scipy.stats import norm
 import matplotlib
 import matplotlib.pyplot as plt
@@ -40,12 +41,7 @@ class Agent: # Base class for any producer
         # described in derived classes
         self.name = name
         self.Nt = cp['Nt']
-        self.NX = ap['NX']
-        self.Na=ap['Na']
-        self.amin=ap['amin']
-        self.amax=ap['amax']
-        self.abar=ap['abar']
-        self.da=  1.*(ap['abar'])/(self.Na-1)
+        self.NX = ap['NX']  
         self.dX = 1.*(ap['Xmax']-ap['Xmin'])/(self.NX-1)
         self.dt = 1.*(cp['tmax']-cp['tmin'])/(self.Nt-1)
         self.X = np.linspace(ap['Xmin'],ap['Xmax'],self.NX)
@@ -56,150 +52,6 @@ class Agent: # Base class for any producer
         self.fCost = ap['fixed cost']
         self.sCost = ap['scrap value']
         self.tmax = cp['tmax']
-        self.m_ = np.zeros((self.Nt,self.Na,self.NX))
-        self.mhat_ = np.zeros((self.Nt,self.Na,self.NX))
-        self.mu_ = np.zeros((self.Nt,self.Na,self.NX))
-        self.muhat_ = np.zeros((self.Nt,self.Na,self.NX))
-
-
-
-
-    def preCalc(self,indens,indenshat,V,V1,V2):
-        # Some technical preliminary computations
-        self.m_[0,:] = indens[:]
-        self.mhat_[0,:] = indenshat[:]
-        with gp.Env(empty=True) as env:
-            env.setParam('OutputFlag', 0)
-            env.start()
-            self.model = gp.Model(env=env)
-        self.mhat= [[[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Na)] for _ in range(self.Nt-1)]
-        self.m = [[[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Na)] for _ in range(self.Nt-1)]
-        self.muhat = [[[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Na)] for _ in range(self.Nt-1)]
-        self.mu = [[[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Na)] for _ in range(self.Nt-1)]
-        
-        
-        #i!=0, z!=0, j!=0 and j!=NX-1
-        for i in range(1,self.Nt-1):
-            for z in range(1,self.Na):
-                for j in range(1,self.NX-1):
-                    expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-self.dt,-1.,-self.dt/self.da],[self.m[i][z][j],self.m[i][z][j+1],self.m[i][z][j-1],self.mu[i][z][j],self.muhat[i][z][j],self.m[i-1][z][j],self.m[i][z-1][j]])
-                    self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-                    expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-1.,-self.dt/self.da],[self.mhat[i][z][j],self.mhat[i][z][j+1],self.mhat[i][z][j-1],self.muhat[i][z][j],self.mhat[i-1][z][j],self.mhat[i][z-1][j]])
-                    self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-        #i!=0, z!=0, j=0 or j=NX-1
-                expr = gp.LinExpr([V[0],V1[1],self.dt,-self.dt,-1.,-self.dt/self.da],[self.m[i][z][0],self.m[i][z][1],self.mu[i][z][0],self.muhat[i][z][0],self.m[i-1][z][0],self.m[i][z-1][0]])
-                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-                expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-self.dt,-1.,-self.dt/self.da],[self.m[i][z][self.NX-1],self.m[i][z][self.NX-2],self.mu[i][z][self.NX-1],self.muhat[i][z][self.NX-1],self.m[i-1][z][self.NX-1],self.m[i][z-1][self.NX-1]])
-                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-                expr = gp.LinExpr([V[0],V1[1],self.dt,-1.,-self.dt/self.da],[self.mhat[i][z][0],self.mhat[i][z][1],self.muhat[i][z][0],self.mhat[i-1][z][0],self.mhat[i][z-1][0]])
-                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-                expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-1.,-self.dt/self.da],[self.mhat[i][z][self.NX-1],self.mhat[i][z][self.NX-2],self.muhat[i][z][self.NX-1],self.mhat[i-1][z][self.NX-1],self.mhat[i][z-1][self.NX-1]])
-                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-        
-        #i!=0, z=0, j!=0 and j!=NX-1
-            for j in range(1,self.NX-1):
-                expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-self.dt,-1.],[self.m[i][0][j],self.m[i][0][j+1],self.m[i][0][j-1],self.mu[i][0][j],self.muhat[i][0][j],self.m[i-1][0][j]])
-                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-                expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-1.],[self.mhat[i][0][j],self.mhat[i][0][j+1],self.mhat[i][0][j-1],self.muhat[i][0][j],self.mhat[i-1][0][j]])
-                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-        #i!=0, z=0, j=0 or j=NX-1
-            expr = gp.LinExpr([V[0],V1[1],self.dt,-self.dt,-1.],[self.m[i][0][0],self.m[i][0][1],self.mu[i][0][0],self.muhat[i][0][0],self.m[i-1][0][0]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-            expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-self.dt,-1.],[self.m[i][0][self.NX-1],self.m[i][0][self.NX-2],self.mu[i][0][self.NX-1],self.muhat[i][0][self.NX-1],self.m[i-1][0][self.NX-1]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-            expr = gp.LinExpr([V[0],V1[1],self.dt,-1.],[self.mhat[i][0][0],self.mhat[i][0][1],self.muhat[i][0][0],self.mhat[i-1][0][0]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-            expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-1.],[self.mhat[i][0][self.NX-1],self.mhat[i][0][self.NX-2],self.muhat[i][0][self.NX-1],self.mhat[i-1][0][self.NX-1]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
-
-        #i=0,z!=0, j!=0 and j!=NX-1
-        for z in range(1,self.Na):
-            for j in range(1,self.NX-1):
-                expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-self.dt,-self.dt/self.da],[self.m[0][z][j],self.m[0][z][j+1],self.m[0][z][j-1],self.mu[0][z][j],self.muhat[0][z][j],self.m[0][z-1][j]])
-                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[z,j])
-                expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-self.dt/self.da],[self.mhat[0][z][j],self.mhat[0][z][j+1],self.mhat[0][z][j-1],self.muhat[0][z][j],self.mhat[0][z-1][j]])
-                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[z,j])
-       #i=0, z!=0, j=0 or j=NX-1
-            expr = gp.LinExpr([V[0],V1[1],self.dt,-self.dt,-self.dt/self.da],[self.m[0][z][0],self.m[0][z][1],self.mu[0][z][0],self.muhat[0][z][0],self.m[0][z-1][0]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[z,0])
-            expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-self.dt,-self.dt/self.da],[self.m[0][z][self.NX-1],self.m[0][z][self.NX-2],self.mu[0][z][self.NX-1],self.muhat[0][z][self.NX-1],self.m[0][z-1][self.NX-1]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[z,self.NX-1])
-            expr = gp.LinExpr([V[0],V1[1],self.dt,-self.dt/self.da],[self.mhat[0][z][0],self.mhat[0][z][1],self.muhat[0][z][0],self.mhat[0][z-1][0]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[z,0])
-            expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-self.dt/self.da],[self.mhat[0][z][self.NX-1],self.mhat[0][z][self.NX-2],self.muhat[0][z][self.NX-1],self.mhat[0][z-1][self.NX-1]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[z,self.NX-1])
-        #i=0, z=0, j!=0 and j!=NX-1
-        for j in range(1,self.NX-1):
-            expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-self.dt],[self.m[0][0][j],self.m[0][0][j+1],self.m[0][0][j-1],self.mu[0][0][j],self.muhat[0][0][j]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[0,j])
-            expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt],[self.mhat[0][0][j],self.mhat[0][0][j+1],self.mhat[0][0][j-1],self.muhat[0][0][j]])
-            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[0,j])
-            
-        #i=0, z=0, j=0 or j=NX-1
-        expr = gp.LinExpr([V[0],V1[1],self.dt,-self.dt],[self.m[0][0][0],self.m[0][0][1],self.mu[0][0][0],self.muhat[0][0][0]])
-        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[0,0])
-        expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-self.dt],[self.m[0][0][self.NX-1],self.m[0][0][self.NX-2],self.mu[0][0][self.NX-1],self.muhat[0][0][self.NX-1]])
-        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[0,self.NX-1])
-        expr = gp.LinExpr([V[0],V1[1],self.dt],[self.mhat[0][0][0],self.mhat[0][0][1],self.muhat[0][0][0]])
-        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[0,0])
-        expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt],[self.mhat[0][0][self.NX-1],self.mhat[0][0][self.NX-2],self.muhat[0][0][self.NX-1]])
-        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[0,self.NX-1])
-
-
-    def bestResponse(self, peakPr, offpeakPr, cPrice, fPrice):
-        # best response function
-        # peakPr : peak price vector
-        # offpeakPr : offpeak price vector
-        # fPr : vector of fuel prices
-        runGain = gp.LinExpr()
-        entryGain = gp.LinExpr()
-        exitGain = gp.LinExpr()
-        curval = 0
-        for i in range(self.Nt-1):
-            for j in range(self.Na):
-                H = self.dX*self.dt*self.da*np.exp(-self.rho*(self.T[i+1]))*(pcoef*self.gain(peakPr[i+1],cPrice[i+1],fPrice[:,i+1])+opcoef*self.gain(offpeakPr[i+1],cPrice[i+1], fPrice[:,i+1]))
-                runGain.addTerms(H,self.m[i][j])
-                curval = curval + np.sum(H*self.m_[i+1,j,:])
-                H = -self.fCost*self.dX*self.da*self.dt*np.exp(-(self.rho+self.gamma0)*(self.T[i+1]))*np.ones(self.NX)
-                entryGain.addTerms(H,self.muhat[i][j])
-                curval = curval + np.sum(H*self.muhat_[i+1,j,:])
-                H = self.sCost*self.dX*self.dt*self.da*np.exp(-(self.rho+self.gamma0)*(self.T[i+1]))*np.ones(self.NX)
-                exitGain.addTerms(H,self.mu[i][j])
-                curval = curval + np.sum(H*self.mu_[i+1,j,:])
-
-       
-        obj = runGain+entryGain+exitGain
-        
-        self.model.setObjective(obj,GRB.MAXIMIZE)
-        self.model.update()
-
-        self.model.optimize()
-        if self.model.SolCount ==0:
-            print('no solution')
-        sol_m = [[[self.m[j][z][i].X for i in range(self.NX)] for z in range(self.Na)] for j in range(self.Nt-1)]
-        sol_mhat = [[[self.mhat[j][z][i].X for i in range(self.NX)] for z in range(self.Na)]for j in range(self.Nt-1)]
-        sol_mu = [[[self.mu[j][z][i].X for i in range(self.NX)] for z in range(self.Na)] for j in range(self.Nt-1)]
-        sol_muhat = [[[self.muhat[j][z][i].X for i in range(self.NX)] for z in range(self.Na)]for j in range(self.Nt-1)]
-
-
-        ob_func = obj.getValue()- curval
-        return ob_func, curval, np.array(sol_m),np.array(sol_mhat),np.array(sol_mu),np.array(sol_muhat)
-
-    def update(self,weight,m,mhat,mu,muhat):
-        # density update with given weight
-        self.m_[1:,:,:] = (1.-weight)*self.m_[1:,:,:]+weight*m
-        self.mhat_[1:,:,:] = (1.-weight)*self.mhat_[1:,:,:]+weight*mhat
-        self.mu_[1:,:,:] = (1.-weight)*self.mu_[1:,:,:]+weight*mu
-        self.muhat_[1:,:,:] = (1.-weight)*self.muhat_[1:,:,:]+weight*muhat
-
-    def capacity(self):
-        return np.sum(np.sum(self.m_,axis=1),axis=1)*self.dX*self.da
-    def pot_capacity(self):
-        return np.sum(np.sum(self.mhat_,axis=1),axis=1)*self.dX*self.da
-    def exit_measure(self):
-        return np.sum(np.sum(self.mu_,axis=1),axis=1)*self.dX*self.da
-    def entry_measure(self):
-        return np.sum(np.sum(self.muhat_,axis=1),axis=1)*self.dX*self.da
 
 
 class Conventional(Agent):
@@ -214,18 +66,17 @@ class Conventional(Agent):
         theta = ap['long term mean']
         stdIn = ap['standard deviation']
         delta = stdIn*np.sqrt(2.*kappa/theta)
-        V=1.+delta*delta*self.X*self.dt/(self.dX*self.dX)+self.dt/self.da
-        #print(V)
+        self.m_ = np.zeros((self.Nt,self.NX))
+        self.mhat_ = np.zeros((self.Nt,self.NX))
+        self.mu_ = np.zeros((self.Nt,self.NX))
+        self.muhat_ = np.zeros((self.Nt,self.NX))
+        V=1.+delta*delta*self.X*self.dt/(self.dX*self.dX)
         V1 =-delta*delta*self.X*self.dt/(2*self.dX*self.dX)+kappa*(theta-self.X)*self.dt/(2*self.dX)
-        #print(V1)
         V2=-delta*delta*self.X*self.dt/(2*self.dX*self.dX)-kappa*(theta-self.X)*self.dt/(2*self.dX)
         alpha = (theta/stdIn)*(theta/stdIn)
         bet = theta/stdIn/stdIn
-        indens=np.zeros((self.Na,self.NX))
-        indenshat=np.zeros((self.Na,self.NX))
-        for i in range(len(indens)):
-            indens[i] = ap['initial capacity']*bet*gamma.pdf(bet*self.X,alpha)/self.Na/self.da
-            indenshat[i] = ap['potential capacity']*bet*gamma.pdf(bet*self.X,alpha)/self.Na/self.da
+        indens = ap['initial capacity']*bet*gamma.pdf(bet*self.X,alpha)
+        indenshat = ap['potential capacity']*bet*gamma.pdf(bet*self.X,alpha)
         self.preCalc(indens,indenshat,V,V1,V2)
     def G(self,x):
         # Gain function
@@ -236,9 +87,9 @@ class Conventional(Agent):
     def gain(self,p, cp, fp):
         return (convcoef*self.G(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp) - self.rCost)
     def offer(self,p,cp, fp, t):
-        return sum(self.F(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp)*np.sum(self.m_[t,self.amin:self.amax,:],axis=0))*self.dX*self.da
+        return sum(self.F(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp)*self.m_[t,:])*self.dX
     def ioffer(self,p,cp,fp,t):
-        return sum(self.G(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp)*np.sum(self.m_[t,self.amin:self.amax,:],axis=0))*self.dX*self.da
+        return sum(self.G(p-self.cFuel*fp[self.fuel]-self.X-self.cTax*cp)*self.m_[t,:])*self.dX
     def full_offer(self,price, cPrice, fPrice):
         # agent supply for given price level
         res = np.zeros(self.Nt)
@@ -246,32 +97,147 @@ class Conventional(Agent):
             res[i] = self.offer(price[i], cPrice[i], fPrice[:,i],i)
         return res
 
+    def preCalc(self,indens,indenshat,V,V1,V2):
+        # Some technical preliminary computations
+        self.m_[0,:] = indens[:]
+        #print(indens)
+        self.mhat_[0,:] = indenshat[:]
+        #print(indenshat)
+        with gp.Env(empty=True) as env:
+            env.setParam('OutputFlag', 0)
+            env.start()
+            self.model = gp.Model(env=env)
+        self.mhat= [[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Nt-1)]
+        self.m = [[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Nt-1)]
+        self.muhat = [[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Nt-1)]
+        self.mu = [[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Nt-1)]
+        for i in range(0,self.Nt-2):
+            for j in range(1,self.NX-1):
+                expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-self.dt,-1.],[self.m[i+1][j],self.m[i+1][j+1],self.m[i+1][j-1],self.mu[i+1][j],self.muhat[i+1][j],self.m[i][j]])
+                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+                
+                expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-1.],[self.mhat[i+1][j],self.mhat[i+1][j+1],self.mhat[i+1][j-1],self.muhat[i+1][j],self.mhat[i][j]])
+                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+            expr = gp.LinExpr([V[0],V1[1],self.dt,-self.dt,-1.],[self.m[i+1][0],self.m[i+1][1],self.mu[i+1][0],self.muhat[i+1][0],self.m[i][0]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+            expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-self.dt,-1.],[self.m[i+1][self.NX-1],self.m[i+1][self.NX-2],self.mu[i+1][self.NX-1],self.muhat[i+1][self.NX-1],self.m[i][self.NX-1]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+            expr = gp.LinExpr([V[0],V1[1],self.dt,-1.],[self.mhat[i+1][0],self.mhat[i+1][1],self.muhat[i+1][0],self.mhat[i][0]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+            expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-1.],[self.mhat[i+1][self.NX-1],self.mhat[i+1][self.NX-2],self.muhat[i+1][self.NX-1],self.mhat[i][self.NX-1]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+        for j in range(1,self.NX-1):
+            expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt,-self.dt],[self.m[0][j],self.m[0][j+1],self.m[0][j-1],self.mu[0][j],self.muhat[0][j]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[j])
+            expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],self.dt],[self.mhat[0][j],self.mhat[0][j+1],self.mhat[0][j-1],self.muhat[0][j]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[j])
+        expr = gp.LinExpr([V[0],V1[1],self.dt,-self.dt],[self.m[0][0],self.m[0][1],self.mu[0][0],self.muhat[0][0]])
+        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[0])
+        expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt,-self.dt],[self.m[0][self.NX-1],self.m[0][self.NX-2],self.mu[0][self.NX-1],self.muhat[0][self.NX-1]])
+        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[self.NX-1])
+        expr = gp.LinExpr([V[0],V1[1],self.dt],[self.mhat[0][0],self.mhat[0][1],self.muhat[0][0]])
+        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[0])
+        expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],self.dt],[self.mhat[0][self.NX-1],self.mhat[0][self.NX-2],self.muhat[0][self.NX-1]])
+        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[self.NX-1])
 
+
+    def bestResponse(self, peakPr, offpeakPr, cPrice, fPrice):
+        # best response function
+        # peakPr : peak price vector
+        # offpeakPr : offpeak price vector
+        # fPr : vector of fuel prices
+        runGain = gp.LinExpr()
+        entryGain = gp.LinExpr()
+        exitGain = gp.LinExpr()
+        curval = 0
+        for i in range(self.Nt-1):
+            H = self.dX*self.dt*np.exp(-self.rho*(self.T[i+1]))*(pcoef*self.gain(peakPr[i+1],cPrice[i+1],fPrice[:,i+1])+opcoef*self.gain(offpeakPr[i+1],cPrice[i+1], fPrice[:,i+1]))
+            runGain.addTerms(H,self.m[i])
+            curval = curval + np.sum(H*self.m_[i+1,:])
+            
+            H = -self.fCost*self.dX*self.dt*np.exp(-(self.rho+self.gamma0)*(self.T[i+1]))*np.ones(self.NX)
+            entryGain.addTerms(H,self.muhat[i])
+            curval = curval + np.sum(H*self.muhat_[i+1,:])
+            H = self.sCost*self.dX*self.dt*np.exp(-(self.rho+self.gamma0)*(self.T[i+1]))*np.ones(self.NX)
+            exitGain.addTerms(H,self.mu[i])
+            curval = curval + np.sum(H*self.mu_[i+1,:])
+
+       
+        obj = runGain+entryGain+exitGain
+        
+        self.model.setObjective(obj,GRB.MAXIMIZE)
+        self.model.update()
+        self.model.optimize()
+        if self.model.SolCount ==0:
+            print('no solution')
+        sol_m = [[self.m[j][i].X for i in range(self.NX)] for j in range(self.Nt-1)]
+        sol_mhat = [[self.mhat[j][i].X for i in range(self.NX)] for j in range(self.Nt-1)]
+        sol_mu = [[self.mu[j][i].X for i in range(self.NX)] for j in range(self.Nt-1)]
+        sol_muhat = [[self.muhat[j][i].X for i in range(self.NX)] for j in range(self.Nt-1)]
+
+
+        ob_func = obj.getValue()- curval
+        return ob_func, curval, np.array(sol_m),np.array(sol_mhat),np.array(sol_mu),np.array(sol_muhat)
+
+    def update(self,weight,m,mhat,mu,muhat):
+        # density update with given weight
+        self.m_[1:,:] = (1.-weight)*self.m_[1:,:]+weight*m
+        self.mhat_[1:,:] = (1.-weight)*self.mhat_[1:,:]+weight*mhat
+        self.mu_[1:,:] = (1.-weight)*self.mu_[1:,:]+weight*mu
+        self.muhat_[1:,:] = (1.-weight)*self.muhat_[1:,:]+weight*muhat
+
+    def capacity(self):
+        return np.sum(self.m_,axis=1)*self.dX
+    def pot_capacity(self):
+        return np.sum(self.mhat_,axis=1)*self.dX
+    def exit_measure(self):
+        return np.sum(self.mu_,axis=1)*self.dX
+    def entry_measure(self):
+        return np.sum(self.muhat_,axis=1)*self.dX
 
 
 
 class Renewable(Agent):
     def __init__(self,name,cp,ap):
         Agent.__init__(self,name,cp,ap)
+        self.Na=ap['Na']
+        self.Amint=ap['amint']
+        self.Amaxt=ap['amaxt']
+        self.Abar=ap['abar']
+        self.da = 1.*(self.Abar)/(self.Na-1)
+        
+        self.A = np.linspace(0,self.Abar,self.Na)
+        
+        self.Amin=math.ceil(self.Amint/self.da)
+        self.Amax=math.floor(self.Amaxt/self.da)
+        
         kappa = ap['mean reversion']
         theta = ap['long term mean']
         stdIn = ap['standard deviation']
         delta = stdIn*np.sqrt(2.*kappa/(theta*(1-theta)-stdIn*stdIn))
+        self.m_ = np.zeros((self.Nt,self.Na,self.NX))
+        self.mhat_ = np.zeros((self.Nt,self.NX))
+        self.mu_ = np.zeros((self.Nt,self.Na,self.NX))
+        self.muhat_ = np.zeros((self.Nt,self.NX))
+        self.mtau_ = np.zeros((self.Nt,self.NX))
+        self.mutau_ = np.zeros((self.Nt,self.NX))
         V=1.+delta*delta*self.X*(1-self.X)*self.dt/(self.dX*self.dX)+self.dt/self.da
+        V0=1.+delta*delta*self.X*(1-self.X)*self.dt/(self.dX*self.dX)
         V1 = -delta*delta*self.X*(1.-self.X)*self.dt/(2*self.dX*self.dX)+kappa*(theta-self.X)*self.dt/(2*self.dX)
         V2 = -delta*delta*self.X*(1.-self.X)*self.dt/(2*self.dX*self.dX)-kappa*(theta-self.X)*self.dt/(2*self.dX)
         alpha = theta*(theta*(1.-theta)/stdIn/stdIn-1.)
         bet = (1.-theta)*(theta*(1.-theta)/stdIn/stdIn-1.)
-        indens=np.zeros((self.Na,self.NX))
-        indenshat=np.zeros((self.Na,self.NX))
-        for i in range(len(indens)):
-            indens[i] = ap['initial capacity']*beta.pdf(self.X,alpha,bet)/self.da/self.Na
-            indenshat[i] = ap['potential capacity']*beta.pdf(self.X,alpha,bet)/self.da/self.Na
-        self.preCalc(indens,indenshat,V,V1,V2)
+        indenshat=ap['potential capacity']*beta.pdf(self.X,alpha,bet)
+        indens =np.zeros((self.Na,self.NX))
+        for i in range(1,self.Na):
+            indens[i] = ap['initial capacity']*beta.pdf(self.X,alpha,bet)/(self.Na-1)/self.da
+        self.preCalc(indens,indenshat,V,V0,V1,V2)
+    def mbar(self,t):
+        return np.sum(self.m_[t,np.max([self.Amin,1]):self.Amax+1,:],axis=0)*self.da+self.mtau_[t,:]
     def gain(self,p,cp,fp):
         return convcoef*p*self.X - self.rCost
     def offer(self,t):
-        return sum(self.X*np.sum(self.m_[t,self.amin:self.amax,:],axis=0))*self.dX*self.da
+        return sum(self.X*self.mbar(t))*self.dX
     def full_offer(self):
         # agent supply for given price level
         res = np.zeros(self.Nt)
@@ -279,6 +245,169 @@ class Renewable(Agent):
             res[i] = self.offer(i)
         return res
 
+    def preCalc(self,indens,indenshat,V,V0,V1,V2):
+        # Some technical preliminary computations
+        self.m_[0,:,:] = indens[:,:]
+        self.mhat_[0,:] = indenshat[:]
+        with gp.Env(empty=True) as env:
+            env.setParam('OutputFlag', 0)
+            env.start()
+            self.model = gp.Model(env=env)
+        self.mhat= [[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Nt-1)]
+        self.m = [[[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Na)] for _ in range(self.Nt-1)]
+        self.muhat = [[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Nt-1)]
+        self.mu = [[[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Na)] for _ in range(self.Nt-1)]
+        self.mtau=[[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Nt-1)]
+        self.mutau=[[self.model.addVar() for _ in range(self.NX)] for _ in range(self.Nt-1)]
+        
+        #z=0
+        for i in range(0,self.Nt-1):
+            for j in range(0,self.NX):
+                expr= gp.LinExpr([self.dt,-self.dt],[self.m[i][0][j],self.muhat[i][j]])
+                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+        
+        #z!=0
+        #case i!=0
+        for i in range(1,self.Nt-1):
+            #z!=0, j!=Nx-1, j!=0
+            for j in range(1,self.NX-1):
+                for z in range(1,self.Na):
+                    expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],-self.dt/self.da, self.dt,-1.],[self.m[i][z][j],self.m[i][z][j+1],self.m[i][z][j-1],self.m[i][z-1][j],self.mu[i][z][j],self.m[i-1][z][j]])
+                    self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+                expr = gp.LinExpr([V0[j],V1[j+1],V2[j-1], self.dt,-1.],[self.mhat[i][j],self.mhat[i][j+1],self.mhat[i][j-1],self.muhat[i][j],self.mhat[i-1][j]])
+                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+
+                expr=gp.LinExpr([V0[j],V1[j+1],V2[j-1], self.dt,-self.dt,-1.],[self.mtau[i][j],self.mtau[i][j+1],self.mtau[i][j-1],self.mutau[i][j],self.m[i][self.Na-1][j],self.mtau[i-1][j]])
+                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+                    
+                    
+            #z!=0, j=0 or j=NX-1
+            for z in range(1,self.Na):
+                expr = gp.LinExpr([V[0],V1[1],-self.dt/self.da,self.dt,-1.],[self.m[i][z][0],self.m[i][z][1],self.m[i][z-1][0],self.mu[i][z][0],self.m[i-1][z][0]])
+                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+                expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],-self.dt/self.da,self.dt,-1.],[self.m[i][z][self.NX-1],self.m[i][z][self.NX-2],self.m[i][z-1][self.NX-1],self.mu[i][z][self.NX-1],self.m[i-1][z][self.NX-1]])
+                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+            expr = gp.LinExpr([V0[0],V1[1],self.dt,-1.],[self.mhat[i][0],self.mhat[i][1],self.muhat[i][0],self.mhat[i-1][0]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+            
+            expr = gp.LinExpr([V0[self.NX-1],V2[self.NX-2],self.dt,-1.],[self.mhat[i][self.NX-1],self.mhat[i][self.NX-2],self.muhat[i][self.NX-1],self.mhat[i-1][self.NX-1]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+
+
+            expr=gp.LinExpr([V0[0],V1[1],self.dt,-self.dt,-1.],[self.mtau[i][0],self.mtau[i][1],self.mutau[i][0],self.m[i][self.Na-1][0],self.mtau[i-1][0]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+
+
+            expr=gp.LinExpr([V0[self.NX-1],V2[self.NX-2], self.dt,-self.dt,-1.],[self.mtau[i][self.NX-1],self.mtau[i][self.NX-2],self.mutau[i][self.NX-1],self.m[i][self.Na-1][self.NX-1],self.mtau[i-1][self.NX-1]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+                
+        #case i=0
+        #z!=0, j!=0, j!=NX-1
+        for j in range(1,self.NX-1):
+            for z in range(1,self.Na):
+                expr = gp.LinExpr([V[j],V1[j+1],V2[j-1],-self.dt/self.da,self.dt],[self.m[0][z][j],self.m[0][z][j+1],self.m[0][z][j-1],self.m[0][z-1][j],self.mu[0][z][j]])
+                self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[z,j])
+
+            expr = gp.LinExpr([V0[j],V1[j+1],V2[j-1],self.dt],[self.mhat[0][j],self.mhat[0][j+1],self.mhat[0][j-1],self.muhat[0][j]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[j])
+
+            expr=gp.LinExpr([V0[j],V1[j+1],V2[j-1], self.dt,-self.dt],[self.mtau[0][j],self.mtau[0][j+1],self.mtau[0][j-1],self.mutau[0][j],self.m[0][self.Na-1][j]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+                
+            # i=0,z!=0 j=0 or j=NX-1
+        for z in range(1,self.Na):
+            expr = gp.LinExpr([V[0],V1[1],-self.dt/self.da,self.dt],[self.m[0][z][0],self.m[0][z][1],self.m[0][z-1][0],self.mu[0][z][0]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[z,0])
+
+            expr = gp.LinExpr([V[self.NX-1],V2[self.NX-2],-self.dt/self.da,self.dt],[self.m[0][z][self.NX-1],self.m[0][z][self.NX-2],self.m[0][z-1][self.NX-1],self.mu[0][z][self.NX-1]])
+            self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indens[z,self.NX-1])
+
+        expr = gp.LinExpr([V0[0],V1[1],self.dt],[self.mhat[0][0],self.mhat[0][1],self.muhat[0][0]])
+        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[0])
+
+        expr = gp.LinExpr([V0[self.NX-1],V2[self.NX-2],self.dt],[self.mhat[0][self.NX-1],self.mhat[0][self.NX-2],self.muhat[0][self.NX-1]])
+        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=indenshat[self.NX-1])
+
+        expr=gp.LinExpr([V0[0],V1[1],self.dt,-self.dt],[self.mtau[0][0],self.mtau[0][1],self.mutau[0][0],self.m[0][self.Na-1][0]])
+        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+
+
+        expr=gp.LinExpr([V0[self.NX-1],V2[self.NX-2], self.dt,-self.dt],[self.mtau[0][self.NX-1],self.mtau[0][self.NX-2],self.mutau[0][self.NX-1],self.m[0][self.Na-1][self.NX-1]])
+        self.model.addLConstr(lhs=expr, sense=GRB.EQUAL, rhs=0.)
+
+        
+
+    def bestResponse(self, peakPr, offpeakPr, cPrice, fPrice):
+        # best response function
+        # peakPr : peak price vector
+        # offpeakPr : offpeak price vector
+        # fPr : vector of fuel prices
+        runGain = gp.LinExpr()
+        entryGain = gp.LinExpr()
+        exitGain = gp.LinExpr()
+        curval = 0
+        for i in range(self.Nt-1):
+            for j in range(1,self.Na):
+                H = self.dX*self.dt*self.da*np.exp(-self.rho*(self.T[i+1]))*(pcoef*self.gain(peakPr[i+1],cPrice[i+1],fPrice[:,i+1])+opcoef*self.gain(offpeakPr[i+1],cPrice[i+1], fPrice[:,i+1]))
+                runGain.addTerms(H,self.m[i][j])
+                curval = curval + np.sum(H*self.m_[i+1][j])
+                
+                H = self.sCost*self.dX*self.dt*self.da*np.exp(-(self.rho+self.gamma0)*(self.T[i+1]))*np.ones(self.NX)
+                exitGain.addTerms(H,self.mu[i][j])
+                curval = curval + np.sum(H*self.mu_[i+1][j])
+            
+            H = self.dX*self.dt*np.exp(-self.rho*(self.T[i+1]))*(pcoef*self.gain(peakPr[i+1],cPrice[i+1],fPrice[:,i+1])+opcoef*self.gain(offpeakPr[i+1],cPrice[i+1], fPrice[:,i+1]))
+            runGain.addTerms(H,self.mtau[i])
+            curval = curval + np.sum(H*self.mtau_[i+1])
+
+            H = self.sCost*self.dX*self.dt*np.exp(-(self.rho+self.gamma0)*(self.T[i+1]))*np.ones(self.NX)
+            exitGain.addTerms(H,self.mutau[i])
+            curval = curval + np.sum(H*self.mutau_[i+1])
+            
+            
+            
+            H = -self.fCost*self.dX*self.dt*np.exp(-(self.rho+self.gamma0)*(self.T[i+1]))*np.ones(self.NX)
+            entryGain.addTerms(H,self.muhat[i])
+            curval = curval + np.sum(H*self.muhat_[i+1])
+            
+            
+       
+        obj = runGain+entryGain+exitGain
+        
+        
+        self.model.setObjective(obj,GRB.MAXIMIZE)
+        self.model.update()
+        
+        self.model.optimize()
+        
+        if self.model.SolCount ==0:
+            print('no solution')
+        sol_m = [[[self.m[j][z][i].X for i in range(self.NX)] for z in range(self.Na)] for j in range(self.Nt-1)]
+        sol_mhat = [[self.mhat[j][i].X for i in range(self.NX)]  for j in range(self.Nt-1)]
+        sol_mu = [[[self.mu[j][z][i].X for i in range(self.NX)]for z in range(self.Na)] for j in range(self.Nt-1)]
+        sol_muhat = [[self.muhat[j][i].X for i in range(self.NX)]  for j in range(self.Nt-1)]
+        sol_mtau = [[self.mtau[j][i].X for i in range(self.NX)]for j in range(self.Nt-1)]
+        sol_mutau = [[self.mutau[j][i].X for i in range(self.NX)]  for j in range(self.Nt-1)]
+
+        ob_func = obj.getValue()- curval
+        return ob_func, curval, np.array(sol_m),np.array(sol_mhat),np.array(sol_mu),np.array(sol_muhat),np.array(sol_mtau),np.array(sol_mutau)
+
+    def update(self,weight,m,mhat,mu,muhat,mtau,mutau):
+        # density update with given weight
+        self.m_[1:,:,:] = (1.-weight)*self.m_[1:,:,:]+weight*m
+        self.mhat_[1:,:] = (1.-weight)*self.mhat_[1:,:]+weight*mhat
+        self.mu_[1:,:,:] = (1.-weight)*self.mu_[1:,:,:]+weight*mu
+        self.muhat_[1:,:] = (1.-weight)*self.muhat_[1:,:]+weight*muhat
+        self.mtau_[1:,:] = (1.-weight)*self.mtau_[1:,:]+weight*mtau
+        self.mutau_[1:,:] = (1.-weight)*self.mutau_[1:,:]+weight*mutau
+    def capacity(self):
+        return np.sum(np.sum(self.m_[:,1:,:],axis=1),axis=1)*self.da*self.dX+np.sum(self.mtau_,axis=1)*self.dX
+    def pot_capacity(self):
+        return np.sum(self.mhat_,axis=1)*self.dX
+    def exit_measure(self):
+        return np.sum(np.sum(self.mu_[:,1:,:],axis=1),axis=1)*self.da*self.dX+np.sum(self.mutau_,axis=1)*self.dX
+    def entry_measure(self):
+        return np.sum(self.muhat_,axis=1)*self.dX
 
 class Simulation:
     # main class for performing the simulation
@@ -288,6 +417,7 @@ class Simulation:
         self.cagents = cagents# conventional
         self.ragents = ragents# renewable
         self.Nt = cp['Nt']
+        
         self.T = np.linspace(cp['tmin'],cp['tmax'],self.Nt)
         self.pdemand = np.array(cp["demand"])*cp["demand ratio"]/(pcoef*cp["demand ratio"]+opcoef)
         self.opdemand = np.array(cp["demand"])/(pcoef*cp["demand ratio"]+opcoef)
@@ -319,10 +449,12 @@ class Simulation:
             x0[2:] = self.fPrice[:,j]
             bds = [(0,Pmax),(0,Pmax)]+[(0,None)]*self.Nfuels
             opres = minimize(lambda x:opfunc(x,j),x0,bounds=bds)
+            
             self.Prp[j]=opres.x[0]
             self.Prop[j] = opres.x[1]
             self.fPrice[:,j] = opres.x[2:]
-
+            #print(opres.x)
+            #print(opfunc(opres.x,j))
     def run(self,Niter,tol,power=1., shift=1):
         # run the simulation with maximum Niter iterations
         # the program will stop when the total increase of objective function is less than tol
@@ -336,8 +468,8 @@ class Simulation:
             message = "Weight: {:.4f}".format(weight)
             obtot = 0
             for a in self.ragents:
-                ob, val, m,mhat,mu,muhat = a.bestResponse(self.Prp,self.Prop,self.fTax,self.fPrice)
-                a.update(weight,m,mhat,mu,muhat)
+                ob, val, m,mhat,mu,muhat,mtau,mutau = a.bestResponse(self.Prp,self.Prop,self.fTax,self.fPrice)
+                a.update(weight,m,mhat,mu,muhat,mtau,mutau)
                 message = message+"; "+a.name+": {:.2f}".format(ob)
                 obtot = obtot+ob
             for a in self.cagents:
@@ -360,6 +492,9 @@ class Simulation:
         # write simulation output into a file scenario_name
         output = {"time": self.cagents[0].T, "peak price":self.Prp,"offpeak price":self.Prop,
                   "peak demand":self.pdemand, "offpeak demand":self.opdemand}
+        
+
+        
         for a in self.cagents:
             output[a.name+" capacity"] = a.capacity()
             output[a.name+" potential capacity"] = a.pot_capacity()

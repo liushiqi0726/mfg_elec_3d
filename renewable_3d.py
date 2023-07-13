@@ -4,9 +4,9 @@
     "NX" : 41, # space grid size
     "Xmin" : 0.1, # minimum capacity factor value
     "Xmax" : 0.7, # maximum capacity factor value
-    "Na" : 5,
-    "amin": 0,
-    "amax": 25,
+    "Na" : 10,
+    "amint": 0,
+    "amaxt": 25,
     "abar": 25,
     "discount rate" : 0.08,
     "depreciation rate" : 0.03, # how fast the cost decreases
